@@ -1,0 +1,15 @@
+[Unit]
+Description=Bale Link Bot
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/bale-link-bot
+EnvironmentFile=/opt/bale-link-bot/.env
+ExecStart=/usr/bin/node /opt/bale-link-bot/src/index.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

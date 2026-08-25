@@ -1,0 +1,13 @@
+[Unit]
+Description=Telegram Local Bot API Server
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+ExecStart=/usr/local/bin/telegram-bot-api --api-id=YOUR_API_ID --api-hash=YOUR_API_HASH --local
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
