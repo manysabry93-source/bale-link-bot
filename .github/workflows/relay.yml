@@ -1,0 +1,75 @@
+name: Relay files to Bale and Rubika
+
+on:
+  # The real trigger: fired instantly by the Cloudflare Worker the moment the
+  # admin sends a file to the Telegram bot.
+  repository_dispatch:
+    types: [relay-file]
+
+  # Manual trigger for testing from the Actions tab, without waiting for a
+  # real Telegram message.
+  workflow_dispatch:
+    inputs:
+      fileId:
+        description: "Telegram file_id to relay"
+        required: true
+      fileName:
+        description: "File name"
+        required: false
+        default: "test-file"
+      size:
+        description: "File size in bytes (optional)"
+        required: false
+      asVideo:
+        description: "Send as video? (true/false)"
+        required: false
+        default: "false"
+      caption:
+        description: "Caption (optional)"
+        required: false
+
+# Never let two runs overlap - if one is still relaying a large file, queue the next.
+concurrency:
+  group: bale-link-bot-relay
+  cancel-in-progress: false
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # generous ceiling for a big file over a slow connection
+
+    # Prebuilt image (not compiled from source) so this run starts in seconds.
+    # Only used to download the file - receiving the trigger no longer goes
+    # through this server at all (that's the Telegram webhook -> Worker path).
+    services:
+      telegram-bot-api:
+        image: aiogram/telegram-bot-api:latest
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_LOCAL: "true"
+        ports:
+          - 8081:8081
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run relay
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
+          LOCAL_BOT_API_URL: "http://localhost:8081"
+          BALE_BOT_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
+          BALE_API_URL: "https://tapi.bale.ai"
+          BALE_CHANNEL_ID: ${{ secrets.BALE_CHANNEL_ID }}
+          RUBIKA_BOT_TOKEN: ${{ secrets.RUBIKA_BOT_TOKEN }}
+          RUBIKA_API_URL: "https://botapi.rubika.ir"
+          RUBIKA_CHANNEL_ID: ${{ secrets.RUBIKA_CHANNEL_ID }}
+        run: node src/relay.js
