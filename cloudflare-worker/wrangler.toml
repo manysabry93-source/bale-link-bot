@@ -1,0 +1,10 @@
+name = "bale-link-bot-trigger"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+# Set the real values as Worker secrets (never in this file):
+#   wrangler secret put TELEGRAM_WEBHOOK_SECRET
+#   wrangler secret put ADMIN_CHAT_ID
+#   wrangler secret put GITHUB_TOKEN
+#   wrangler secret put GITHUB_OWNER
+#   wrangler secret put GITHUB_REPO

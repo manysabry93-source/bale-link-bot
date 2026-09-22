@@ -1,12 +1,13 @@
 {
   "name": "bale-link-bot",
-  "version": "1.0.0",
-  "description": "Telegram bot: receives files/videos, encrypts and stages them on Cloudflare R2, then uploads to admin-chosen Bale and/or Rubika channels.",
+  "version": "2.0.0",
+  "description": "Stateless GitHub-Actions relay: streams files/videos from a Telegram bot straight into a fixed Bale channel and a fixed Rubika channel, admin-only, nothing is ever written to disk or stored anywhere.",
   "type": "module",
-  "main": "src/index.js",
-  "scripts": { "start": "node src/index.js" },
+  "main": "src/relay.js",
+  "scripts": {
+    "start": "node src/relay.js"
+  },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.606.0",
     "dotenv": "^16.4.5",
     "form-data": "^4.0.0",
     "node-fetch": "^3.3.2"
