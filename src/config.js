@@ -9,9 +9,7 @@ function required(name) {
 export const config = {
   telegram: {
     botToken: required('TELEGRAM_BOT_TOKEN'),
-    // Points at the ephemeral local Bot API server started as a GitHub Actions "service"
-    // for this run only - not a persistent server.
-    localApiUrl: process.env.LOCAL_BOT_API_URL || 'http://localhost:8081',
+    localApiUrl: process.env.LOCAL_BOT_API_URL || 'https://api.telegram.org',
   },
 
   bale: {
