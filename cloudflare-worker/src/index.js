@@ -3,6 +3,11 @@
  * tells GitHub Actions to run - turning the ~5 minute polling delay into a few
  * seconds. Does NOT touch the file itself: only tiny JSON metadata (file_id,
  * size, name) passes through here, so this stays well within the free Workers plan.
+ *
+ * DEBUG MODE: every decision this Worker makes is also reported straight back
+ * to the admin's Telegram chat, so you can see exactly what happened without
+ * needing to dig through the Cloudflare dashboard. Remove the sendDebug(...)
+ * calls once everything is confirmed working, if you want a quieter bot.
  */
 
 function extractFile(message) {
@@ -37,6 +42,20 @@ function extractFile(message) {
   return null;
 }
 
+async function sendDebug(env, text) {
+  if (!env.TELEGRAM_BOT_TOKEN || !env.ADMIN_CHAT_ID) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: env.ADMIN_CHAT_ID, text: `🔧 debug: ${text}` }),
+    });
+  } catch (err) {
+    // Never let a debug-message failure break the real flow.
+    console.error('sendDebug failed:', err);
+  }
+}
+
 export default {
   async fetch(request, env) {
     if (request.method !== 'POST') {
@@ -52,15 +71,26 @@ export default {
     const update = await request.json();
     const message = update.message;
 
-    // Always ack with 200 quickly - Telegram retries aggressively otherwise.
-    if (!message || String(message.chat?.id) !== String(env.ADMIN_CHAT_ID)) {
+    if (!message) {
+      await sendDebug(env, 'received a webhook call with no "message" field (probably not a normal chat message) - ignored.');
+      return new Response('ignored', { status: 200 });
+    }
+
+    if (String(message.chat?.id) !== String(env.ADMIN_CHAT_ID)) {
+      await sendDebug(
+        env,
+        `received a message, but its chat id (${message.chat?.id}) does not match the ADMIN_CHAT_ID secret (${env.ADMIN_CHAT_ID}) - ignored. Fix the ADMIN_CHAT_ID secret if this is actually you.`
+      );
       return new Response('ignored', { status: 200 });
     }
 
     const file = extractFile(message);
     if (!file) {
+      await sendDebug(env, 'message is from the admin, but has no document/video/audio/photo attached - nothing to relay.');
       return new Response('ignored', { status: 200 });
     }
+
+    await sendDebug(env, `found file "${file.fileName}" (${file.size} bytes) - dispatching to GitHub Actions now...`);
 
     const dispatchRes = await fetch(
       `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/dispatches`,
@@ -86,10 +116,13 @@ export default {
     );
 
     if (!dispatchRes.ok) {
-      console.error('GitHub dispatch failed:', dispatchRes.status, await dispatchRes.text());
+      const bodyText = await dispatchRes.text();
+      console.error('GitHub dispatch failed:', dispatchRes.status, bodyText);
+      await sendDebug(env, `GitHub dispatch FAILED - HTTP ${dispatchRes.status}: ${bodyText.slice(0, 300)}`);
       return new Response('dispatch failed', { status: 502 });
     }
 
+    await sendDebug(env, `GitHub dispatch succeeded (HTTP ${dispatchRes.status}) - check the Actions tab now.`);
     return new Response('ok', { status: 200 });
   },
 };
