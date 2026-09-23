@@ -72,9 +72,20 @@ jobs:
           sleep 3
 
           echo "Logging in to Local Bot API..."
-          RESPONSE=$(curl -s "http://localhost:8081/bot${TELEGRAM_BOT_TOKEN}/getMe")
-          echo "Login response: $RESPONSE"
+          curl -s "http://localhost:8081/bot${TELEGRAM_BOT_TOKEN}/getMe"
           sleep 5
+
+      - name: Debug getFile
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          FILE_ID=$(cat $GITHUB_EVENT_PATH | python3 -c "import sys,json; e=json.load(sys.stdin); print(e.get('client_payload',{}).get('fileId',''))")
+          echo "file_id: $FILE_ID"
+          echo "Testing getFile via Local Bot API..."
+          curl -s "http://localhost:8081/bot${TELEGRAM_BOT_TOKEN}/getFile?file_id=${FILE_ID}"
+          echo ""
+          echo "Testing getFile via Official API..."
+          curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getFile?file_id=${FILE_ID}"
 
       - name: Run relay
         env:
