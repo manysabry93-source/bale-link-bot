@@ -65,6 +65,10 @@ export default {
     // Reject anything not actually from Telegram.
     const secret = request.headers.get('X-Telegram-Bot-Api-Secret-Token');
     if (secret !== env.TELEGRAM_WEBHOOK_SECRET) {
+      await sendDebug(
+        env,
+        `received a POST with a mismatched or missing secret token (got "${secret}") - rejected as forbidden. Check that TELEGRAM_WEBHOOK_SECRET here matches the secret_token used in setWebhook.`
+      );
       return new Response('forbidden', { status: 403 });
     }
 
