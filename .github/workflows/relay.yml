@@ -32,18 +32,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
-    services:
-      telegram-bot-api:
-        image: aiogram/telegram-bot-api:latest
-        env:
-          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-          TELEGRAM_LOCAL: "true"
-        ports:
-          - 8081:8081
-        volumes:
-          - /tmp/telegram-bot-api:/var/lib/telegram-bot-api
-
     steps:
       - uses: actions/checkout@v4
 
@@ -54,48 +42,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Wait for Local Bot API
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        run: |
-          echo "Waiting for Local Bot API..."
-          for i in $(seq 1 30); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8081/bot${TELEGRAM_BOT_TOKEN}/getMe)
-            if [ "$STATUS" = "200" ]; then
-              echo "Ready!"
-              break
-            fi
-            echo "Attempt $i: HTTP $STATUS, waiting 2s..."
-            sleep 2
-          done
-          sleep 5
-
-      - name: Debug filesystem
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        run: |
-          echo "=== Triggering getFile ==="
-          FILE_ID=$(cat $GITHUB_EVENT_PATH | python3 -c "import sys,json; e=json.load(sys.stdin); print(e.get('client_payload',{}).get('fileId',''))")
-          echo "file_id: $FILE_ID"
-          curl -s "http://localhost:8081/bot${TELEGRAM_BOT_TOKEN}/getFile?file_id=${FILE_ID}"
-          echo ""
-          echo "=== Waiting 30s for download ==="
-          sleep 30
-          echo "=== Contents of /tmp/telegram-bot-api ==="
-          find /tmp/telegram-bot-api -type f 2>/dev/null || echo "Empty or not found"
-          echo "=== Contents of /tmp/telegram-bot-api (all) ==="
-          ls -la /tmp/telegram-bot-api/ 2>/dev/null || echo "Directory not found"
-
       - name: Run relay
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
-          LOCAL_BOT_API_URL: "http://localhost:8081"
           BALE_BOT_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
           BALE_API_URL: "https://tapi.bale.ai"
           BALE_CHANNEL_ID: ${{ secrets.BALE_CHANNEL_ID }}
           RUBIKA_BOT_TOKEN: ${{ secrets.RUBIKA_BOT_TOKEN }}
           RUBIKA_API_URL: "https://botapi.rubika.ir"
           RUBIKA_CHANNEL_ID: ${{ secrets.RUBIKA_CHANNEL_ID }}
-          LOCAL_FILE_ROOT: "/tmp/telegram-bot-api"
         run: node src/relay.js
