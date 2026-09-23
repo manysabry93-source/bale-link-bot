@@ -70,6 +70,22 @@ jobs:
           done
           sleep 5
 
+      - name: Debug filesystem
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          echo "=== Triggering getFile ==="
+          FILE_ID=$(cat $GITHUB_EVENT_PATH | python3 -c "import sys,json; e=json.load(sys.stdin); print(e.get('client_payload',{}).get('fileId',''))")
+          echo "file_id: $FILE_ID"
+          curl -s "http://localhost:8081/bot${TELEGRAM_BOT_TOKEN}/getFile?file_id=${FILE_ID}"
+          echo ""
+          echo "=== Waiting 30s for download ==="
+          sleep 30
+          echo "=== Contents of /tmp/telegram-bot-api ==="
+          find /tmp/telegram-bot-api -type f 2>/dev/null || echo "Empty or not found"
+          echo "=== Contents of /tmp/telegram-bot-api (all) ==="
+          ls -la /tmp/telegram-bot-api/ 2>/dev/null || echo "Directory not found"
+
       - name: Run relay
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
