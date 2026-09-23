@@ -1,13 +1,8 @@
 name: Relay files to Bale and Rubika
 
 on:
-  # The real trigger: fired instantly by the Cloudflare Worker the moment the
-  # admin sends a file to the Telegram bot.
   repository_dispatch:
     types: [relay-file]
-
-  # Manual trigger for testing from the Actions tab, without waiting for a
-  # real Telegram message.
   workflow_dispatch:
     inputs:
       fileId:
@@ -28,7 +23,6 @@ on:
         description: "Caption (optional)"
         required: false
 
-# Never let two runs overlap - if one is still relaying a large file, queue the next.
 concurrency:
   group: bale-link-bot-relay
   cancel-in-progress: false
@@ -36,11 +30,8 @@ concurrency:
 jobs:
   relay:
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # generous ceiling for a big file over a slow connection
+    timeout-minutes: 30
 
-    # Prebuilt image (not compiled from source) so this run starts in seconds.
-    # Only used to download the file - receiving the trigger no longer goes
-    # through this server at all (that's the Telegram webhook -> Worker path).
     services:
       telegram-bot-api:
         image: aiogram/telegram-bot-api:latest
@@ -60,6 +51,25 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Wait for Local Bot API and login bot
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          echo "Waiting for Local Bot API to start..."
+          for i in $(seq 1 30); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8081/bot${TELEGRAM_BOT_TOKEN}/getMe)
+            if [ "$STATUS" = "200" ]; then
+              echo "Local Bot API is ready!"
+              break
+            fi
+            echo "Attempt $i: not ready yet (HTTP $STATUS), waiting..."
+            sleep 2
+          done
+
+          echo "Logging in bot to Local Bot API..."
+          RESPONSE=$(curl -s "http://localhost:8081/bot${TELEGRAM_BOT_TOKEN}/getMe")
+          echo "Response: $RESPONSE"
 
       - name: Run relay
         env:
