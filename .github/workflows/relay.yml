@@ -41,6 +41,8 @@ jobs:
           TELEGRAM_LOCAL: "true"
         ports:
           - 8081:8081
+        volumes:
+          - /tmp/telegram-bot-api:/var/lib/telegram-bot-api
 
     steps:
       - uses: actions/checkout@v4
@@ -66,8 +68,7 @@ jobs:
             echo "Attempt $i: HTTP $STATUS, waiting 2s..."
             sleep 2
           done
-          echo "Giving server extra time to fully initialize..."
-          sleep 10
+          sleep 5
 
       - name: Run relay
         env:
@@ -80,4 +81,5 @@ jobs:
           RUBIKA_BOT_TOKEN: ${{ secrets.RUBIKA_BOT_TOKEN }}
           RUBIKA_API_URL: "https://botapi.rubika.ir"
           RUBIKA_CHANNEL_ID: ${{ secrets.RUBIKA_CHANNEL_ID }}
+          LOCAL_FILE_ROOT: "/tmp/telegram-bot-api"
         run: node src/relay.js
