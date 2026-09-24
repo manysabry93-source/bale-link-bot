@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { waitUntilReady, openFileStream } from './telegramLocal.js';
+import { waitUntilReady, openFileStream } from './telegramMTProto.js';
 import { teeStream } from './tee.js';
 import { sendStreamToBale } from './bale.js';
 import { sendStreamToRubika } from './rubika.js';
@@ -27,6 +27,8 @@ function readTriggerPayload() {
       fileName: inputs.fileName || 'file',
       asVideo: inputs.asVideo === 'true',
       caption: inputs.caption || '',
+      chatId: inputs.chatId,
+      messageId: Number(inputs.messageId) || undefined,
     };
   }
   return null;
@@ -42,7 +44,7 @@ async function main() {
   await waitUntilReady();
 
   console.log(`Relaying "${payload.fileName}"...`);
-  const { stream, size } = await openFileStream(payload.fileId);
+  const { stream, size } = await openFileStream(payload.fileId, payload.chatId, payload.messageId);
   const [toBale, toRubika] = teeStream(stream);
 
   await Promise.all([
