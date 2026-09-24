@@ -1,6 +1,7 @@
 import { TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions/index.js';
 import { Readable } from 'node:stream';
+import fetch from 'node-fetch';
 import { config } from './config.js';
 
 let client = null;
@@ -17,31 +18,37 @@ async function getClient() {
   return client;
 }
 
-/** No-op kept for compatibility with relay.js */
+/** Looks up the bot's @username via the official Bot API (getMe). */
+async function getBotUsername() {
+  const res = await fetch(`https://api.telegram.org/bot${config.telegram.botToken}/getMe`);
+  const data = await res.json();
+  if (!data.ok) throw new Error(`getMe failed: ${JSON.stringify(data)}`);
+  return data.result.username;
+}
+
 export async function waitUntilReady() {
   return;
 }
 
 /**
- * Downloads the media from a specific message.
- * NOTE: chatId coming from the Bot API webhook is the admin's OWN id
- * (since that's how private chats work from a bot's perspective).
- * But the MTProto client is logged in AS the admin, so from its point of
- * view the conversation partner is the BOT itself, not the admin.
- * So we always look the message up in the chat with the bot (peer = bot's user id),
- * which is the numeric prefix of the bot token, ignoring the passed chatId.
+ * Downloads the media from a specific message in the chat with the bot.
+ * We resolve the bot by @username (not by numeric id), because a fresh
+ * MTProto session has no cached entity for a bare numeric peer id yet -
+ * usernames can always be resolved directly.
  */
 export async function openFileStream(fileId, chatId, messageId) {
   const tgClient = await getClient();
 
-  const botUserId = Number(config.telegram.botToken.split(':')[0]);
-  console.log(`Fetching message ${messageId} from chat with bot (${botUserId})...`);
+  const username = await getBotUsername();
+  console.log(`Resolving entity for @${username}...`);
+  const entity = await tgClient.getEntity(username);
 
-  const messages = await tgClient.getMessages(botUserId, { ids: [messageId] });
+  console.log(`Fetching message ${messageId} from chat with @${username}...`);
+  const messages = await tgClient.getMessages(entity, { ids: [messageId] });
   const message = messages[0];
 
   if (!message || !message.media) {
-    throw new Error(`Could not find media in message ${messageId} in chat with bot ${botUserId}`);
+    throw new Error(`Could not find media in message ${messageId} in chat with @${username}`);
   }
 
   console.log('Downloading media into memory...');
