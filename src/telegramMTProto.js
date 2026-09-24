@@ -23,24 +23,30 @@ export async function waitUntilReady() {
 }
 
 /**
- * Downloads the media from a specific Telegram message (chatId + messageId)
- * using the user account (MTProto), which has no 20MB limit like the Bot API.
+ * Downloads the media from a specific message.
+ * NOTE: chatId coming from the Bot API webhook is the admin's OWN id
+ * (since that's how private chats work from a bot's perspective).
+ * But the MTProto client is logged in AS the admin, so from its point of
+ * view the conversation partner is the BOT itself, not the admin.
+ * So we always look the message up in the chat with the bot (peer = bot's user id),
+ * which is the numeric prefix of the bot token, ignoring the passed chatId.
  */
 export async function openFileStream(fileId, chatId, messageId) {
   const tgClient = await getClient();
 
-  console.log(`Fetching message ${messageId} from chat ${chatId}...`);
-  const messages = await tgClient.getMessages(chatId, { ids: [messageId] });
+  const botUserId = Number(config.telegram.botToken.split(':')[0]);
+  console.log(`Fetching message ${messageId} from chat with bot (${botUserId})...`);
+
+  const messages = await tgClient.getMessages(botUserId, { ids: [messageId] });
   const message = messages[0];
 
   if (!message || !message.media) {
-    throw new Error(`Could not find media in message ${messageId} of chat ${chatId}`);
+    throw new Error(`Could not find media in message ${messageId} in chat with bot ${botUserId}`);
   }
 
   console.log('Downloading media into memory...');
   const buffer = await tgClient.downloadMedia(message, {
     progressCallback: (progress) => {
-      // progress is a fraction 0..1
       if (Math.floor(progress * 100) % 10 === 0) {
         console.log(`Download progress: ${Math.floor(progress * 100)}%`);
       }
