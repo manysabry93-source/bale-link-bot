@@ -18,7 +18,6 @@ async function getClient() {
   return client;
 }
 
-/** Looks up the bot's @username via the official Bot API (getMe). */
 async function getBotUsername() {
   const res = await fetch(`https://api.telegram.org/bot${config.telegram.botToken}/getMe`);
   const data = await res.json();
@@ -30,12 +29,6 @@ export async function waitUntilReady() {
   return;
 }
 
-/**
- * Downloads the media from a specific message in the chat with the bot.
- * We resolve the bot by @username (not by numeric id), because a fresh
- * MTProto session has no cached entity for a bare numeric peer id yet -
- * usernames can always be resolved directly.
- */
 export async function openFileStream(fileId, chatId, messageId) {
   const tgClient = await getClient();
 
@@ -43,9 +36,17 @@ export async function openFileStream(fileId, chatId, messageId) {
   console.log(`Resolving entity for @${username}...`);
   const entity = await tgClient.getEntity(username);
 
+  console.log(`Fetching last 5 messages from chat with @${username} for debugging...`);
+  const recentMessages = await tgClient.getMessages(entity, { limit: 5 });
+  for (const m of recentMessages) {
+    console.log(`  id=${m.id} hasMedia=${!!m.media} className=${m.className} date=${m.date}`);
+  }
+
   console.log(`Fetching message ${messageId} from chat with @${username}...`);
   const messages = await tgClient.getMessages(entity, { ids: [messageId] });
   const message = messages[0];
+
+  console.log('Fetched message:', message ? `id=${message.id} hasMedia=${!!message.media}` : 'null/undefined');
 
   if (!message || !message.media) {
     throw new Error(`Could not find media in message ${messageId} in chat with @${username}`);
