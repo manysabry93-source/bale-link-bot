@@ -9,7 +9,12 @@ function required(name) {
 export const config = {
   telegram: {
     botToken: required('TELEGRAM_BOT_TOKEN'),
-    localApiUrl: process.env.LOCAL_BOT_API_URL || 'https://api.telegram.org',
+  },
+
+  mtproto: {
+    apiId: parseInt(required('TELEGRAM_API_ID'), 10),
+    apiHash: required('TELEGRAM_API_HASH'),
+    session: required('TELEGRAM_SESSION'),
   },
 
   bale: {
