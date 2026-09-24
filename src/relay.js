@@ -4,11 +4,6 @@ import { teeStream } from './tee.js';
 import { sendStreamToBale } from './bale.js';
 import { sendStreamToRubika } from './rubika.js';
 
-/**
- * Reads the file to relay from whatever triggered this run:
- * - repository_dispatch (the real path, fired instantly by the Cloudflare Worker)
- * - workflow_dispatch (manual run from the Actions tab, with inputs filled in by hand)
- */
 function readTriggerPayload() {
   const eventName = process.env.GITHUB_EVENT_NAME;
   const eventPath = process.env.GITHUB_EVENT_PATH;
@@ -44,7 +39,7 @@ async function main() {
   await waitUntilReady();
 
   console.log(`Relaying "${payload.fileName}"...`);
-  const { stream, size } = await openFileStream(payload.fileId, payload.chatId, payload.messageId);
+  const { stream, size } = await openFileStream(payload.fileId, payload.chatId, payload.messageId, payload.size);
   const [toBale, toRubika] = teeStream(stream);
 
   await Promise.all([
