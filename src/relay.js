@@ -1,8 +1,14 @@
 import fs from 'node:fs';
-import { waitUntilReady, openFileStream } from './telegramMTProto.js';
+import { Readable } from 'node:stream';
+import { downloadMediaBuffer } from './telegramMTProto.js';
+import { compressVideo } from './compress.js';
 import { teeStream } from './tee.js';
 import { sendStreamToBale } from './bale.js';
 import { sendStreamToRubika } from './rubika.js';
+
+// Conservative target: both Bale and Rubika have historically rejected
+// files above ~42-50MB, so we aim comfortably under that.
+const MAX_SIZE_BYTES = 40 * 1024 * 1024; // 40MB
 
 function readTriggerPayload() {
   const eventName = process.env.GITHUB_EVENT_NAME;
@@ -45,22 +51,33 @@ async function main() {
     return;
   }
 
-  await waitUntilReady();
-
   console.log(`Relaying "${payload.fileName}"...`);
-  const { stream, size } = await openFileStream(payload.fileId, payload.chatId, payload.messageId, payload.size);
-  const [toBale, toRubika] = teeStream(stream);
+  let buffer = await downloadMediaBuffer(payload.fileId, payload.chatId, payload.messageId, payload.size);
+
+  if (buffer.length > MAX_SIZE_BYTES) {
+    if (payload.asVideo) {
+      console.log(`File is ${buffer.length} bytes, above the ${MAX_SIZE_BYTES} byte limit - compressing...`);
+      buffer = await compressVideo(buffer, MAX_SIZE_BYTES);
+    } else {
+      console.log(
+        `File is ${buffer.length} bytes, above the ${MAX_SIZE_BYTES} byte limit, and is not a video - cannot compress. Will attempt to send as-is and may fail.`
+      );
+    }
+  }
+
+  const size = buffer.length;
+  const [toBale, toRubika] = teeStream(Readable.from(buffer));
 
   const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes per platform
 
   const results = await Promise.allSettled([
     withTimeout(
-      sendStreamToBale(toBale, payload.size || size, payload.fileName, { asVideo: payload.asVideo }),
+      sendStreamToBale(toBale, size, payload.fileName, { asVideo: payload.asVideo }),
       TIMEOUT_MS,
       'Bale upload'
     ),
     withTimeout(
-      sendStreamToRubika(toRubika, payload.size || size, payload.fileName, { caption: payload.caption }),
+      sendStreamToRubika(toRubika, size, payload.fileName, { caption: payload.caption }),
       TIMEOUT_MS,
       'Rubika upload'
     ),
