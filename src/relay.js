@@ -29,6 +29,15 @@ function readTriggerPayload() {
   return null;
 }
 
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms)
+    ),
+  ]);
+}
+
 async function main() {
   const payload = readTriggerPayload();
   if (!payload) {
@@ -42,11 +51,19 @@ async function main() {
   const { stream, size } = await openFileStream(payload.fileId, payload.chatId, payload.messageId, payload.size);
   const [toBale, toRubika] = teeStream(stream);
 
-  // Use allSettled so a failure on one platform never cuts off the other -
-  // both streams must be allowed to finish (or fail) independently.
+  const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes per platform
+
   const results = await Promise.allSettled([
-    sendStreamToBale(toBale, payload.size || size, payload.fileName, { asVideo: payload.asVideo }),
-    sendStreamToRubika(toRubika, payload.size || size, payload.fileName, { caption: payload.caption }),
+    withTimeout(
+      sendStreamToBale(toBale, payload.size || size, payload.fileName, { asVideo: payload.asVideo }),
+      TIMEOUT_MS,
+      'Bale upload'
+    ),
+    withTimeout(
+      sendStreamToRubika(toRubika, payload.size || size, payload.fileName, { caption: payload.caption }),
+      TIMEOUT_MS,
+      'Rubika upload'
+    ),
   ]);
 
   const [baleResult, rubikaResult] = results;
@@ -71,7 +88,9 @@ async function main() {
   console.log(`Done: "${payload.fileName}" sent to Bale and Rubika.`);
 }
 
-main().catch((err) => {
-  console.error('Relay run failed:', err);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error('Relay run failed:', err);
+    process.exit(1);
+  });
