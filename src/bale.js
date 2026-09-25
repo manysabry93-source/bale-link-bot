@@ -15,6 +15,15 @@ export async function sendStreamToBale(stream, size, fileName, { asVideo = false
   form.append(fieldName, stream, { filename: fileName, knownLength: size });
 
   const res = await fetch(`${base}/${method}`, { method: 'POST', body: form, headers: form.getHeaders() });
+
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const text = await res.text();
+    throw new Error(
+      `Bale API returned non-JSON response (HTTP ${res.status}). This usually means the file (${size} bytes) is too large for Bale's limit. Response snippet: ${text.slice(0, 200)}`
+    );
+  }
+
   const data = await res.json();
   if (!data.ok) throw new Error(`Bale API error on ${method}: ${JSON.stringify(data)}`);
   return data.result;
