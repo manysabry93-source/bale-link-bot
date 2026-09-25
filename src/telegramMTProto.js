@@ -1,6 +1,5 @@
 import { TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions/index.js';
-import { Readable } from 'node:stream';
 import fetch from 'node-fetch';
 import { config } from './config.js';
 
@@ -25,7 +24,6 @@ async function getBotUsername() {
   return data.result.username;
 }
 
-/** Extracts the byte size from a Telegram media object (document or photo). */
 function getMediaSize(message) {
   if (!message.media) return null;
   const doc = message.media.document;
@@ -43,13 +41,11 @@ export async function waitUntilReady() {
 }
 
 /**
- * Downloads the media for a message in the chat with the bot.
- * Bot-API message IDs and MTProto message IDs for the SAME private chat can
- * differ (a Telegram quirk with bot chats), so instead of trusting messageId,
- * we scan recent messages and match by exact media byte size, which is
- * unique enough in practice for files relayed one at a time.
+ * Downloads the media for a message in the chat with the bot and returns
+ * the raw Buffer (not a stream), so it can optionally be re-compressed
+ * before being turned into upload streams.
  */
-export async function openFileStream(fileId, chatId, messageId, expectedSize) {
+export async function downloadMediaBuffer(fileId, chatId, messageId, expectedSize) {
   const tgClient = await getClient();
 
   const username = await getBotUsername();
@@ -71,7 +67,6 @@ export async function openFileStream(fileId, chatId, messageId, expectedSize) {
     }
   }
 
-  // Fallback: if no exact size match, just take the most recent message with media
   if (!message) {
     console.log('No exact size match, falling back to most recent message with media...');
     message = recentMessages.find((m) => !!m.media) || null;
@@ -95,8 +90,6 @@ export async function openFileStream(fileId, chatId, messageId, expectedSize) {
     throw new Error('Download returned empty buffer');
   }
 
-  const size = buffer.length;
-  console.log(`Download complete: ${size} bytes`);
-
-  return { stream: Readable.from(buffer), size };
+  console.log(`Download complete: ${buffer.length} bytes`);
+  return buffer;
 }
