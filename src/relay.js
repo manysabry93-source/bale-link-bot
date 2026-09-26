@@ -6,9 +6,9 @@ import { teeStream } from './tee.js';
 import { sendStreamToBale } from './bale.js';
 import { sendStreamToRubika } from './rubika.js';
 
-// Conservative target: both Bale and Rubika have historically rejected
-// files above ~42-50MB, so we aim comfortably under that.
 const MAX_SIZE_BYTES = 40 * 1024 * 1024; // 40MB
+const BALE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes - Bale genuinely uploads
+const RUBIKA_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
 
 function readTriggerPayload() {
   const eventName = process.env.GITHUB_EVENT_NAME;
@@ -47,11 +47,10 @@ function withTimeout(promise, ms, label) {
 async function sendOnePart(buffer, fileName, asVideo, caption) {
   const size = buffer.length;
   const [toBale, toRubika] = teeStream(Readable.from(buffer));
-  const TIMEOUT_MS = 5 * 60 * 1000;
 
   const results = await Promise.allSettled([
-    withTimeout(sendStreamToBale(toBale, size, fileName, { asVideo }), TIMEOUT_MS, 'Bale upload'),
-    withTimeout(sendStreamToRubika(toRubika, size, fileName, { caption }), TIMEOUT_MS, 'Rubika upload'),
+    withTimeout(sendStreamToBale(toBale, size, fileName, { asVideo }), BALE_TIMEOUT_MS, 'Bale upload'),
+    withTimeout(sendStreamToRubika(toRubika, size, fileName, { caption, asVideo }), RUBIKA_TIMEOUT_MS, 'Rubika upload'),
   ]);
 
   const [baleResult, rubikaResult] = results;
@@ -62,7 +61,7 @@ async function sendOnePart(buffer, fileName, asVideo, caption) {
   if (rubikaResult.status === 'fulfilled') console.log(`✅ [${fileName}] Sent to Rubika successfully.`);
   else console.error(`❌ [${fileName}] Rubika failed:`, rubikaResult.reason?.message || rubikaResult.reason);
 
-  return results.every((r) => r.status === 'fulfilled');
+  return { baleOk: baleResult.status === 'fulfilled', rubikaOk: rubikaResult.status === 'fulfilled' };
 }
 
 async function main() {
@@ -75,13 +74,14 @@ async function main() {
   console.log(`Relaying "${payload.fileName}"...`);
   const buffer = await downloadMediaBuffer(payload.fileId, payload.chatId, payload.messageId, payload.size);
 
-  let allOk = true;
+  let anyBaleFail = false;
+  let anyRubikaFail = false;
 
   if (buffer.length <= MAX_SIZE_BYTES) {
-    // Small enough - send as a single file.
-    allOk = await sendOnePart(buffer, payload.fileName, payload.asVideo, payload.caption);
+    const { baleOk, rubikaOk } = await sendOnePart(buffer, payload.fileName, payload.asVideo, payload.caption);
+    if (!baleOk) anyBaleFail = true;
+    if (!rubikaOk) anyRubikaFail = true;
   } else if (payload.asVideo) {
-    // Too big - split into lossless parts (stream copy, no re-encoding).
     console.log(`File is ${buffer.length} bytes, above the ${MAX_SIZE_BYTES} byte limit - splitting into parts...`);
     const parts = await splitVideo(buffer, MAX_SIZE_BYTES);
     const total = parts.length;
@@ -89,24 +89,43 @@ async function main() {
     const baseName = payload.fileName.replace(/\.[^/.]+$/, '') || 'video';
 
     for (let i = 0; i < total; i++) {
-      const partFileName = `${baseName} - قسمت ${i + 1} از ${total}.mp4`;
-      const partCaption = `${payload.caption ? payload.caption + '\n\n' : ''}قسمت ${i + 1} از ${total}`;
-      console.log(`Sending part ${i + 1}/${total} (${parts[i].length} bytes)...`);
-      const ok = await sendOnePart(parts[i], partFileName, true, partCaption);
-      if (!ok) allOk = false;
+      const partNum = i + 1;
+      const partFileName = `${baseName} - قسمت ${partNum} از ${total}.mp4`;
+      const partCaption = [
+        `🎬 ${baseName}`,
+        payload.caption || null,
+        '───────────────',
+        `📦 قسمت ${partNum} از ${total}`,
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+
+      console.log(`Sending part ${partNum}/${total} (${parts[i].length} bytes)...`);
+      const { baleOk, rubikaOk } = await sendOnePart(parts[i], partFileName, true, partCaption);
+      if (!baleOk) anyBaleFail = true;
+      if (!rubikaOk) anyRubikaFail = true;
     }
   } else {
     console.log(
       `File is ${buffer.length} bytes, above the ${MAX_SIZE_BYTES} byte limit, and is not a video - cannot split. Sending as-is (will likely fail).`
     );
-    allOk = await sendOnePart(buffer, payload.fileName, false, payload.caption);
+    const { baleOk, rubikaOk } = await sendOnePart(buffer, payload.fileName, false, payload.caption);
+    if (!baleOk) anyBaleFail = true;
+    if (!rubikaOk) anyRubikaFail = true;
   }
 
-  if (!allOk) {
-    throw new Error('One or more parts/platforms failed - see logs above.');
+  console.log('--- Summary ---');
+  console.log(anyBaleFail ? '❌ Bale: one or more parts failed.' : '✅ Bale: all parts sent.');
+  console.log(anyRubikaFail ? '❌ Rubika: one or more parts failed.' : '✅ Rubika: all parts sent.');
+
+  // Only hard-fail the whole run if Bale (the platform that actually works)
+  // had failures. Rubika failures are logged but don't fail the run, since
+  // Rubika appears unreachable from this network regardless of file size.
+  if (anyBaleFail) {
+    throw new Error('One or more parts failed to reach Bale - see logs above.');
   }
 
-  console.log(`Done: "${payload.fileName}" relayed to Bale and Rubika.`);
+  console.log(`Done: "${payload.fileName}" relayed.`);
 }
 
 main()
