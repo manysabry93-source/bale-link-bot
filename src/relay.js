@@ -49,7 +49,7 @@ async function sendOnePart(buffer, fileName, asVideo, caption) {
   const [toBale, toRubika] = teeStream(Readable.from(buffer));
 
   const results = await Promise.allSettled([
-    withTimeout(sendStreamToBale(toBale, size, fileName, { asVideo }), BALE_TIMEOUT_MS, 'Bale upload'),
+    withTimeout(sendStreamToBale(toBale, size, fileName, { asVideo, caption }), BALE_TIMEOUT_MS, 'Bale upload'),
     withTimeout(sendStreamToRubika(toRubika, size, fileName, { caption, asVideo }), RUBIKA_TIMEOUT_MS, 'Rubika upload'),
   ]);
 
@@ -90,15 +90,8 @@ async function main() {
 
     for (let i = 0; i < total; i++) {
       const partNum = i + 1;
-      const partFileName = `${baseName} - قسمت ${partNum} از ${total}.mp4`;
-      const partCaption = [
-        `🎬 ${baseName}`,
-        payload.caption || null,
-        '───────────────',
-        `📦 قسمت ${partNum} از ${total}`,
-      ]
-        .filter(Boolean)
-        .join('\n\n');
+      const partFileName = `پارت ${partNum}.mp4`;
+      const partCaption = `پارت ${partNum} از ${total}`;
 
       console.log(`Sending part ${partNum}/${total} (${parts[i].length} bytes)...`);
       const { baleOk, rubikaOk } = await sendOnePart(parts[i], partFileName, true, partCaption);
