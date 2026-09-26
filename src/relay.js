@@ -3,6 +3,7 @@ import { Readable } from 'node:stream';
 import { downloadMediaBuffer } from './telegramMTProto.js';
 import { splitVideo } from './split.js';
 import { splitFileGeneric } from './splitGeneric.js';
+import { splitPdf } from './splitPdf.js';
 import { teeStream } from './tee.js';
 import { sendStreamToBale } from './bale.js';
 import { sendStreamToRubika } from './rubika.js';
@@ -100,22 +101,42 @@ async function main() {
       if (!rubikaOk) anyRubikaFail = true;
     }
   } else {
-    console.log(`File is ${buffer.length} bytes, above the ${MAX_SIZE_BYTES} byte limit - splitting into archive volumes...`);
-    const parts = await splitFileGeneric(buffer, payload.fileName, MAX_SIZE_BYTES);
-    const total = parts.length;
+    const isPdf = payload.fileName.toLowerCase().endsWith('.pdf');
 
-    for (let i = 0; i < total; i++) {
-      const partNum = i + 1;
-      const partFileName = `${payload.fileName}${parts[i].extension}`; // e.g. myfile.pdf.001
-      const partCaption =
-        partNum === 1
-          ? `پارت ${partNum} از ${total}\n\n📦 همه پارت‌ها را در یک پوشه دانلود کن و با نرم‌افزار 7-Zip روی همین فایل (پارت ۱) کلیک راست کن و Extract بزن.`
-          : `پارت ${partNum} از ${total}`;
+    if (isPdf) {
+      console.log(`PDF is ${buffer.length} bytes, above the ${MAX_SIZE_BYTES} byte limit - splitting by pages...`);
+      const parts = await splitPdf(buffer, MAX_SIZE_BYTES);
+      const total = parts.length;
+      const baseName = payload.fileName.replace(/\.pdf$/i, '');
 
-      console.log(`Sending archive part ${partNum}/${total} (${parts[i].buffer.length} bytes)...`);
-      const { baleOk, rubikaOk } = await sendOnePart(parts[i].buffer, partFileName, false, partCaption);
-      if (!baleOk) anyBaleFail = true;
-      if (!rubikaOk) anyRubikaFail = true;
+      for (let i = 0; i < total; i++) {
+        const partNum = i + 1;
+        const partFileName = `${baseName} - پارت ${partNum}.pdf`;
+        const partCaption = `پارت ${partNum} از ${total}`;
+
+        console.log(`Sending PDF part ${partNum}/${total} (${parts[i].length} bytes)...`);
+        const { baleOk, rubikaOk } = await sendOnePart(parts[i], partFileName, false, partCaption);
+        if (!baleOk) anyBaleFail = true;
+        if (!rubikaOk) anyRubikaFail = true;
+      }
+    } else {
+      console.log(`File is ${buffer.length} bytes, above the ${MAX_SIZE_BYTES} byte limit - splitting into archive volumes...`);
+      const parts = await splitFileGeneric(buffer, payload.fileName, MAX_SIZE_BYTES);
+      const total = parts.length;
+
+      for (let i = 0; i < total; i++) {
+        const partNum = i + 1;
+        const partFileName = `${payload.fileName}${parts[i].extension}`; // e.g. myfile.zip.001
+        const partCaption =
+          partNum === 1
+            ? `پارت ${partNum} از ${total}\n\n📦 همه پارت‌ها را در یک پوشه دانلود کن و با نرم‌افزار 7-Zip روی همین فایل (پارت ۱) کلیک راست کن و Extract بزن.`
+            : `پارت ${partNum} از ${total}`;
+
+        console.log(`Sending archive part ${partNum}/${total} (${parts[i].buffer.length} bytes)...`);
+        const { baleOk, rubikaOk } = await sendOnePart(parts[i].buffer, partFileName, false, partCaption);
+        if (!baleOk) anyBaleFail = true;
+        if (!rubikaOk) anyRubikaFail = true;
+      }
     }
   }
 
