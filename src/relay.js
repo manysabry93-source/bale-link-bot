@@ -2,11 +2,12 @@ import fs from 'node:fs';
 import { Readable } from 'node:stream';
 import { downloadMediaBuffer } from './telegramMTProto.js';
 import { splitVideo } from './split.js';
+import { splitFileGeneric } from './splitGeneric.js';
 import { teeStream } from './tee.js';
 import { sendStreamToBale } from './bale.js';
 import { sendStreamToRubika } from './rubika.js';
 
-const MAX_SIZE_BYTES = 90 * 1024 * 1024; // 90MB - testing actual platform limit
+const MAX_SIZE_BYTES = 40 * 1024 * 1024; // 40MB - confirmed safe limit for Bale
 const BALE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes - Bale genuinely uploads
 const RUBIKA_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
 
@@ -99,12 +100,23 @@ async function main() {
       if (!rubikaOk) anyRubikaFail = true;
     }
   } else {
-    console.log(
-      `File is ${buffer.length} bytes, above the ${MAX_SIZE_BYTES} byte limit, and is not a video - cannot split. Sending as-is (will likely fail).`
-    );
-    const { baleOk, rubikaOk } = await sendOnePart(buffer, payload.fileName, false, payload.caption);
-    if (!baleOk) anyBaleFail = true;
-    if (!rubikaOk) anyRubikaFail = true;
+    console.log(`File is ${buffer.length} bytes, above the ${MAX_SIZE_BYTES} byte limit - splitting into archive volumes...`);
+    const parts = await splitFileGeneric(buffer, payload.fileName, MAX_SIZE_BYTES);
+    const total = parts.length;
+
+    for (let i = 0; i < total; i++) {
+      const partNum = i + 1;
+      const partFileName = `${payload.fileName}${parts[i].extension}`; // e.g. myfile.pdf.001
+      const partCaption =
+        partNum === 1
+          ? `پارت ${partNum} از ${total}\n\n📦 همه پارت‌ها را در یک پوشه دانلود کن و با نرم‌افزار 7-Zip روی همین فایل (پارت ۱) کلیک راست کن و Extract بزن.`
+          : `پارت ${partNum} از ${total}`;
+
+      console.log(`Sending archive part ${partNum}/${total} (${parts[i].buffer.length} bytes)...`);
+      const { baleOk, rubikaOk } = await sendOnePart(parts[i].buffer, partFileName, false, partCaption);
+      if (!baleOk) anyBaleFail = true;
+      if (!rubikaOk) anyRubikaFail = true;
+    }
   }
 
   console.log('--- Summary ---');
