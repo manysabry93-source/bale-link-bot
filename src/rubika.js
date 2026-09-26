@@ -14,11 +14,13 @@ async function safeJson(res, label) {
 }
 
 // Verify exact field/endpoint names against current rubika.ir/botapi docs before production use.
-export async function sendStreamToRubika(stream, size, fileName, { caption } = {}) {
+export async function sendStreamToRubika(stream, size, fileName, { caption, asVideo = false } = {}) {
+  const rubikaType = asVideo ? 'Video' : 'File';
+
   const reqRes = await fetch(`${base}/requestSendFile`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type: 'File' }),
+    body: JSON.stringify({ type: rubikaType }),
   });
   const reqData = await safeJson(reqRes, 'requestSendFile');
   const uploadUrl = reqData?.data?.upload_url;
@@ -34,7 +36,12 @@ export async function sendStreamToRubika(stream, size, fileName, { caption } = {
   const sendRes = await fetch(`${base}/sendFile`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: config.rubika.channelId, file_id: fileId, text: caption }),
+    body: JSON.stringify({
+      chat_id: config.rubika.channelId,
+      file_id: fileId,
+      type: rubikaType,
+      text: caption,
+    }),
   });
   const sendData = await safeJson(sendRes, 'sendFile');
   if (sendData?.status !== 'OK') throw new Error(`Rubika sendFile failed: ${JSON.stringify(sendData)}`);
