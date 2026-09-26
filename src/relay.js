@@ -6,7 +6,7 @@ import { teeStream } from './tee.js';
 import { sendStreamToBale } from './bale.js';
 import { sendStreamToRubika } from './rubika.js';
 
-const MAX_SIZE_BYTES = 40 * 1024 * 1024; // 40MB
+const MAX_SIZE_BYTES = 90 * 1024 * 1024; // 90MB - testing actual platform limit
 const BALE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes - Bale genuinely uploads
 const RUBIKA_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
 
